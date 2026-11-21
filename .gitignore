@@ -1,0 +1,32 @@
+# CMake和ROS构建产物
+**/build/
+**/install/
+**/log/
+
+# 客户端运行日志
+**/logs/
+*.log
+
+# 当前机器的编辑器配置
+.vscode/
+
+# 编辑器临时文件
+*.swp
+*.swo
+*~
+
+# 编译产物与崩溃转储
+*.o
+*.a
+*.so
+*.so.*
+core
+core.*
+
+# Python缓存
+__pycache__/
+*.pyc
+
+# 本机私密配置
+.env
+.env.*
