@@ -38,6 +38,11 @@ endif()
 add_executable(odom_subscriber
   src/odom_subscriber.cpp
 )
+
+# 新增：ROS订阅与TCP查询整合版。
+add_executable(r1_status_server
+  src/main.cpp
+)
 # 为这个程序配置ROS依赖。
 ament_target_dependencies(odom_subscriber
   rclcpp
@@ -48,13 +53,10 @@ ament_target_dependencies(r1_status_server
     nav_msgs
     rpp_msgs
 )
-# 新增：ROS订阅与TCP查询整合版。
-add_executable(r1_status_server
-  src/main.cpp
-)
 # 自己的头文件：正常检查编译警告。
 target_include_directories(r1_status_server PRIVATE
   "${CMAKE_CURRENT_SOURCE_DIR}/include"
+  "${CMAKE_CURRENT_SOURCE_DIR}/../../../common"
 )
 
 # 第三方Muduo头文件：标记为系统头文件。

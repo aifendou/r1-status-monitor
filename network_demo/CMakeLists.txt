@@ -57,6 +57,7 @@ target_include_directories(r1_status_server PRIVATE
 )
 target_include_directories(r1_status_client PRIVATE
     "${MUDUO_INCLUDE_DIR}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../common"
 )
 target_include_directories(frame_codec_test PRIVATE
     "${MUDUO_INCLUDE_DIR}"

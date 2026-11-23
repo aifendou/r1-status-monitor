@@ -1,3 +1,6 @@
+/**
+ * 长度前缀分帧
+ */
 #pragma once 
 #include <muduo/net/Buffer.h>
 #include <muduo/net/TcpConnection.h>

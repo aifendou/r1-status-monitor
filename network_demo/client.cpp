@@ -1,8 +1,8 @@
 /*
  * 项目：R1机器人状态采集与TCP远程监测
- *
- * 功能：
- * 1. 连接127.0.0.1:9090。
+ *  
+ * 功能：TCP 连接、定时查询、重连、接收响应
+ * 1. 连接0.0.0.0:9090。
  * 2. 每两秒发送一次GET_STATE。
  * 3. 解析并显示完整状态响应。
  * 4. 断开后自动重连。
@@ -16,17 +16,14 @@
 #include <muduo/net/Buffer.h>
 #include <muduo/base/Timestamp.h>
 
-#include <nlohmann/json.hpp>
 #include <exception>
 #include <functional>
 #include <iostream>
 #include <string>
-#include <iomanip>
-#include <locale>
-#include <sstream>
 
 #include "FrameCodec.h"
 #include "FileLogger.h"
+#include "StatusFormatter.h"
 
 using namespace std;
 using namespace muduo;
@@ -54,7 +51,7 @@ public:
     // 发起第一次连接
     void connect()
     {
-        cout << "[R1客户端] 开始连接127.0.0.1:9090"
+        cout << "[R1客户端] 开始连接配置的服务端"
              << endl;
             client_.connect();
     }
@@ -133,133 +130,18 @@ private:
                 "查询消息未通过发送长度检查");
         }
     }
-    // 参数是一条经过FrameCodec解出的完整响应正文。
+    // 接收一条已经完成分帧的JSON响应，交给摘要模块处理。
     void handleStateResponse(const std::string& response)
     {
-        try
-        {
-            const auto root =
-                nlohmann::json::parse(response);
+        const auto result =
+            r1_monitor::formatStateResponse(response);
 
-            if (!root.is_object()
-                || !root.value("ok", false))
-            {
-                logger_.writeState(
-                    "STATE_ERROR",
-                    response,
-                    true);
-                return;
-            }
-
-            std::ostringstream text;
-            text.imbue(std::locale::classic());
-            text << std::fixed << std::setprecision(2);
-
-            bool warning = false;
-
-            // ---------- 里程计摘要 ----------
-            const bool odom_received =
-                root.value("odom_received", false);
-
-            const bool odom_fresh =
-                root.value("odom_fresh", false);
-
-            if (!odom_received)
-            {
-                text << "odom=尚未收到";
-                warning = true;
-            }
-            else
-            {
-                text << "odom"
-                    << " x=" << root.at("x").get<double>()
-                    << " y=" << root.at("y").get<double>()
-                    << " vx=" << root.at("vx").get<double>()
-                    << " wz=" << root.at("wz").get<double>();
-
-                if (!odom_fresh)
-                {
-                    text << " [数据过期]";
-                    warning = true;
-                }
-            }
-
-            // ---------- 电池摘要 ----------
-            text << " | battery=";
-
-            if (!root.contains("battery")
-                || !root.at("battery").is_object())
-            {
-                // 兼容尚未升级的服务端。
-                text << "接口尚未提供";
-                warning = true;
-            }
-            else
-            {
-                const auto& battery =
-                    root.at("battery");
-
-                const bool received =
-                    battery.value("received", false);
-
-                const bool fresh =
-                    battery.value("fresh", false);
-
-                if (!received)
-                {
-                    text << "尚未收到";
-                    warning = true;
-                }
-                else if (!fresh)
-                {
-                    // 不把过期电量显示为当前正常电量。
-                    text << "数据过期";
-                    warning = true;
-                }
-                else
-                {
-                    const int percentage =
-                        battery.at("percentage").get<int>();
-
-                    if (percentage < 0 || percentage > 100)
-                    {
-                        text << "电量数值无效";
-                        warning = true;
-                    }
-                    else
-                    {
-                        const bool low_battery =
-                            battery.at("low_battery").get<bool>();
-
-                        text << percentage << "%";
-
-                        if (low_battery)
-                        {
-                            text << " [LOW_BATTERY 低于20%]";
-                            warning = true;
-                        }
-                        else
-                        {
-                            text << " [正常]";
-                        }
-                    }
-                }
-            }
-
-            logger_.writeState(
-                "STATE",
-                text.str(),
-                warning);
-        }
-        catch (const nlohmann::json::exception& error)
-        {
-            // JSON格式错误或字段类型错误不应直接让客户端退出。
-            logger_.writeState(
-                "PROTOCOL_ERROR",
-                std::string("状态响应解析失败：")
-                    + error.what(),
-                true);
-        }
+        // 完整保留Info、Warning、Error等级。
+        // 无论什么等级，这里始终只写日常运行日志。
+        logger_.writeRuntime(
+            result.severity_,
+            "STATE",
+            result.text_);
     }
     FileLogger& logger_;          // 引用main中创建的日志对象，不复制日志文件流。
     TcpClient client_;            // 负责建立和管理TCP连接

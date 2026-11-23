@@ -1,6 +1,10 @@
+/**
+ * 接收查询、读取缓存、生成 JSON 响应
+ */
 #pragma once
 #include "r1_status_ros/state_store.hpp"
 #include "r1_status_ros/FrameCodec.h"
+#include "r1_status_ros/FaultManager.hpp"
 
 #include <muduo/net/TcpServer.h>
 #include <muduo/net/TcpConnection.h>
@@ -28,8 +32,10 @@ public:
     TcpStatusServer(EventLoop* loop,
                     const InetAddress &address,
                     shared_ptr<StateStore> store,
-                    double timeout_sec)
+                    double timeout_sec,
+                    std::shared_ptr<FaultManager> fault_manager = nullptr)
                     :store_(store),
+                    fault_manager_(fault_manager),
                     timeout_sec_(timeout_sec),
                     server_(loop,address,"R1StatusServer")
     {
@@ -133,7 +139,7 @@ private:
     }
     // 把一份电池快照转换为JSON。
     // 这里只处理业务数据，不调用ROS，也不发送TCP。
-    std::string batteryToJson(const BatterySnapshot& battery)
+    string batteryToJson(const BatterySnapshot& battery)
     {
         // 暂定5秒；后续根据R1底层电池实际更新周期调整。
         constexpr double battery_timeout_sec = 5.0;
@@ -179,7 +185,142 @@ private:
 
         return out.str();
     }
-    std::string buildStateJson()
+    // 把设备快照转换为JSON。
+    // 与里程计、电池一样，在读取快照后再处理，不持有缓存锁。
+    string deviceToJson(
+        const DeviceSnapshot& device) const
+    {
+        // 暂定5秒，后续根据底层状态实际更新周期调整。
+        constexpr double device_timeout_sec = 5.0;
+
+        if (!device.received_)
+        {
+            return
+                R"({"received":false,"fresh":false,"age_sec":null,)"
+                R"("control_mode":null,"power_mode":null,)"
+                R"("motor_mode":null,"e_stop":null})";
+        }
+
+        const double age_sec =
+            std::chrono::duration<double>(
+                SteadyClock::now() - device.last_update_time_)
+                .count();
+
+        const bool fresh = age_sec <= device_timeout_sec;
+
+        std::ostringstream out;
+        out.imbue(std::locale::classic());
+
+        out << std::boolalpha
+            << std::fixed
+            << std::setprecision(3);
+
+        out << R"({"received":true,"fresh":)" << fresh
+            << R"(,"age_sec":)" << age_sec
+            << R"(,"control_mode":)" << device.control_mode_
+            << R"(,"power_mode":)" << device.power_mode_
+            << R"(,"motor_mode":)" << device.motor_mode_
+            << R"(,"e_stop":)" << device.e_stop_
+            << "}";
+
+        return out.str();
+    }
+
+    // 故障描述可能包含引号、反斜杠和换行。
+    // 不能直接拼进JSON字符串。
+    static string quoteJson(const std::string& text)
+    {
+        static const char hex[] = "0123456789abcdef";
+
+        std::string result = "\"";
+
+        for (unsigned char ch : text)
+        {
+            if (ch == '"')
+            {
+                result += "\\\"";
+            }
+            else if (ch == '\\')
+            {
+                result += "\\\\";
+            }
+            else if (ch < 0x20)
+            {
+                result += "\\u00";
+                result += hex[(ch >> 4) & 0x0f];
+                result += hex[ch & 0x0f];
+            }
+            else
+            {
+                result += static_cast<char>(ch);
+            }
+        }
+
+        result += "\"";
+
+        return result;
+    }
+    string faultsToJson() const
+    {
+        if (!fault_manager_)
+        {
+            return R"({"enabled":false})";
+        }
+
+        const auto data = fault_manager_->snapshot();
+
+        if (!data.enabled_)
+        {
+            return R"({"enabled":false})";
+        }
+
+        std::ostringstream out;
+
+        out << R"({"enabled":true,"active":[)";
+
+        bool first = true;
+
+        for (const auto& fault : data.active_)
+        {
+            if (!first)
+            {
+                out << ",";
+            }
+
+            first = false;
+
+            const std::string severity =
+                fault.severity_ == Severity::Error
+                    ? "error"
+                    : "warning";
+
+            out << R"({"module":)" << quoteJson(fault.module_)
+                << R"(,"code":)" << quoteJson(fault.code_)
+                << R"(,"severity":)" << quoteJson(severity)
+                << R"(,"detail":)" << quoteJson(fault.detail_)
+                << "}";
+        }
+
+        out << R"(],"unknown_modules":[)";
+
+        first = true;
+
+        for (const auto& module : data.unknown_modules_)
+        {
+            if (!first)
+            {
+                out << ",";
+            }
+
+            first = false;
+            out << quoteJson(module);
+        }
+
+        out << "]}";
+
+        return out.str();
+    }
+        std::string buildStateJson()
     {
         // 使用原来的逻辑生成完整里程计JSON。
         std::string response = buildOdomStateJson();
@@ -189,20 +330,28 @@ private:
             return R"({"ok":false,"error":"STATE_ENCODING_ERROR"})";
         }
 
-        // 取得电池快照。复制完成后，缓存锁已释放。
+        // 分别复制快照；每个读取函数返回时，对应的锁已释放。
         const auto battery = store_->batterySnapshot();
+        const auto device = store_->deviceSnapshot();
 
         // 去掉最外层JSON末尾的"}"，追加battery成员后再补回。
         response.pop_back();
 
         response += R"(,"battery":)";
         response += batteryToJson(battery);
+
+        response += R"(,"device":)";
+        response += deviceToJson(device);
+
+        response += R"(,"faults":)";
+        response += faultsToJson();
+
         response += "}";
 
         return response;
     }
-
     std::shared_ptr<StateStore> store_;
+    std::shared_ptr<FaultManager> fault_manager_;
     double timeout_sec_;
     muduo::net::TcpServer server_; 
 };
