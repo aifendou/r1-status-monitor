@@ -87,7 +87,7 @@ public:
             << "["
             << formatTime(
                    std::time(nullptr),
-                   "%Y-%m-%d %H:%M:%S %z")
+                   "%Y-%m-%d %H:%M:%S")
             << "] "
             << "[pid=" << process_id_ << "] "
             << "[" << event << "] "
@@ -112,6 +112,52 @@ public:
             << "后续日志仅输出到终端："
             << file_path_.string()
             << endl;
+        }
+    }
+    /**
+     * warning=false：正常状态，终端蓝色。
+     * warning=true ：告警状态，终端红色。
+     * 文件里保存[INFO]或[WARN]，不写入ANSI颜色控制字符。
+     * 沿用现有write()的文件保存、日期切换和错误处理。
+     * */
+    void writeState(
+        const std::string& event,
+        const std::string& message,
+        bool warning)
+    {
+        // 只有真正输出到终端时才使用颜色。
+        // 重定向到文件时，不输出颜色控制字符。
+        const bool terminal =
+            ::isatty(STDOUT_FILENO) != 0;
+
+        if (terminal)
+        {
+            std::cout
+                << (warning ? "\033[31m" : "\033[34m");
+        }
+
+        try
+        {
+            // 原write()的第一个参数是事件标签。
+            // 这里用INFO/WARN作为等级，业务事件放到正文中。
+            write(
+                warning ? "WARN" : "INFO",
+                "[" + event + "] " + message);
+        }
+        catch (...)
+        {
+            if (terminal)
+            {
+                std::cout << "\033[0m" << std::flush;
+            }
+
+            throw;
+        }
+
+        if (terminal)
+        {
+            // 恢复终端颜色，避免后续提示符也被染色。
+            std::cout << "\033[0m" << std::flush;
         }
     }
     // 返回完整文件路径，供客户端启动时打印

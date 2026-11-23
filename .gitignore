@@ -30,3 +30,5 @@ __pycache__/
 # 本机私密配置
 .env
 .env.*
+
+/ros_ws/src/rpp_msgs/

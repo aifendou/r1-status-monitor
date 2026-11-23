@@ -95,7 +95,7 @@ private:
         }
     }
     // 从共享快照生成JSON，不再返回固定位置和速度。
-    string buildStateJson() const
+    string buildOdomStateJson() const
     {
         const auto data =store_->snapshot();
         // 从未收到消息时，不能把默认零值冒充真实数据
@@ -130,6 +130,76 @@ private:
             << R"(,"wz":)" << data.angular_velocity_
             << "}";
         return output.str();//取出最终组成的字符串
+    }
+    // 把一份电池快照转换为JSON。
+    // 这里只处理业务数据，不调用ROS，也不发送TCP。
+    std::string batteryToJson(const BatterySnapshot& battery)
+    {
+        // 暂定5秒；后续根据R1底层电池实际更新周期调整。
+        constexpr double battery_timeout_sec = 5.0;
+        constexpr int low_battery_threshold = 20;
+
+        if (!battery.received_)
+        {
+            return R"({"received":false,"fresh":false,"age_sec":null,"percentage":null,"low_battery":null})";
+        }
+
+        const double age_sec =
+            std::chrono::duration<double>(
+                std::chrono::steady_clock::now()
+                - battery.last_update_time_)
+                .count();
+
+        const bool fresh = age_sec <= battery_timeout_sec;
+
+        std::ostringstream out;
+
+        // 保证小数点使用"."，布尔值输出true/false。
+        out.imbue(std::locale::classic());
+        out << std::boolalpha;
+        out.setf(std::ios::fixed, std::ios::floatfield);
+        out.precision(3);
+
+        out << R"({"received":true,"fresh":)" << fresh
+            << R"(,"age_sec":)" << age_sec
+            << R"(,"percentage":)" << battery.percentage_
+            << R"(,"low_battery":)";
+
+        if (fresh)
+        {
+            out << (battery.percentage_ < low_battery_threshold);
+        }
+        else
+        {
+            // 数据过期，不能声称当前电量正常或当前仍然低电量。
+            out << "null";
+        }
+
+        out << "}";
+
+        return out.str();
+    }
+    std::string buildStateJson()
+    {
+        // 使用原来的逻辑生成完整里程计JSON。
+        std::string response = buildOdomStateJson();
+
+        if (response.empty() || response.back() != '}')
+        {
+            return R"({"ok":false,"error":"STATE_ENCODING_ERROR"})";
+        }
+
+        // 取得电池快照。复制完成后，缓存锁已释放。
+        const auto battery = store_->batterySnapshot();
+
+        // 去掉最外层JSON末尾的"}"，追加battery成员后再补回。
+        response.pop_back();
+
+        response += R"(,"battery":)";
+        response += batteryToJson(battery);
+        response += "}";
+
+        return response;
     }
 
     std::shared_ptr<StateStore> store_;

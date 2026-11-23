@@ -13,6 +13,7 @@ endif()
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(nav_msgs REQUIRED)
+find_package(rpp_msgs REQUIRED)
 
 # 系统线程支持。
 find_package(Threads REQUIRED)
@@ -41,6 +42,11 @@ add_executable(odom_subscriber
 ament_target_dependencies(odom_subscriber
   rclcpp
   nav_msgs
+)
+ament_target_dependencies(r1_status_server
+    rclcpp
+    nav_msgs
+    rpp_msgs
 )
 # 新增：ROS订阅与TCP查询整合版。
 add_executable(r1_status_server

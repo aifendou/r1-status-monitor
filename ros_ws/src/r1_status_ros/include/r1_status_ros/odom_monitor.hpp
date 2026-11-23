@@ -2,6 +2,7 @@
 #include "r1_status_ros/state_store.hpp"
 #include <rclcpp/rclcpp.hpp>
 #include <nav_msgs/msg/odometry.hpp>
+#include <rpp_msgs/msg/battery_state.hpp>
 #include <chrono>
 
 #include <functional>
@@ -23,6 +24,8 @@ public:
     {
         odom_subscription_ =this->create_subscription<nav_msgs::msg::Odometry>(
             topic,rclcpp::QoS(10),bind(&OdomMonitor::onOdom,this,_1));
+        battery_subscription_ = this->create_subscription<rpp_msgs::msg::BatteryState>(
+            "/battery_state",rclcpp::QoS(10),bind(&OdomMonitor::onBattery,this,_1));
         check_timer_ =this->create_wall_timer(
             chrono::seconds(1),bind(&OdomMonitor::checkTimeout,this));
         RCLCPP_INFO(
@@ -47,6 +50,12 @@ private:
                 this->get_logger(),
                 "Rejected odom containing NaN or infinity.");
         }
+    }
+    //电池信息
+    void onBattery(rpp_msgs::msg::BatteryState::ConstSharedPtr msg)
+    {   
+        // uint8先转成int，后续处理和输出都按整数百分比
+        store_->updateBattery(static_cast<int>(msg->percentage),msg->ts);
     }
     // 定时检查数据年龄，并输出缓存状态,回调函数
     void checkTimeout(){
@@ -94,6 +103,7 @@ private:
     bool timed_out_ = false;
     // 保存订阅对象，让它在节点运行期间持续存在。
     rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odom_subscription_;
+    rclcpp::Subscription<rpp_msgs::msg::BatteryState>::SharedPtr battery_subscription_;
     rclcpp::TimerBase::SharedPtr check_timer_;
 
 };

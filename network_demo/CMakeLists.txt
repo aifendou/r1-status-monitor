@@ -11,6 +11,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 # 查找平台对应的线程库
 find_package(Threads REQUIRED)
+find_package(nlohmann_json REQUIRED)
 
 # 查找Muduo头文件所在的根目录
 # 例如找到 /usr/local/include，
@@ -66,11 +67,13 @@ target_link_libraries(r1_status_server PRIVATE
     "${MUDUO_NET_LIBRARY}"
     "${MUDUO_BASE_LIBRARY}"
     Threads::Threads
+
 )
 target_link_libraries(r1_status_client PRIVATE
     "${MUDUO_NET_LIBRARY}"
     "${MUDUO_BASE_LIBRARY}"
     Threads::Threads
+    nlohmann_json::nlohmann_json
 )
 target_link_libraries(frame_codec_test PRIVATE
     "${MUDUO_NET_LIBRARY}"
