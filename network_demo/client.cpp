@@ -21,6 +21,7 @@
 #include <iostream>
 #include <string>
 
+
 #include "FrameCodec.h"
 #include "FileLogger.h"
 #include "StatusFormatter.h"
@@ -166,7 +167,7 @@ int main(int argc, char* argv[])
             "START",
             "客户端启动，日志文件=" + logger.path());
         EventLoop loop;
-        InetAddress serverAddr("192.168.11.11", 9090);
+        InetAddress serverAddr("192.168.22.10", 9090);
         R1MonitorClient client(&loop, serverAddr, "R1MonitorClient",logger);
         client.connect();
         loop.loop();

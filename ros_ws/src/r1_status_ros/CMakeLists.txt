@@ -14,7 +14,8 @@ find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(nav_msgs REQUIRED)
 find_package(rpp_msgs REQUIRED)
-
+find_package(rm_ros_interfaces REQUIRED)
+find_package(sensor_msgs REQUIRED)
 # 系统线程支持。
 find_package(Threads REQUIRED)
 
@@ -52,6 +53,8 @@ ament_target_dependencies(r1_status_server
     rclcpp
     nav_msgs
     rpp_msgs
+    rm_ros_interfaces
+    sensor_msgs
 )
 # 自己的头文件：正常检查编译警告。
 target_include_directories(r1_status_server PRIVATE

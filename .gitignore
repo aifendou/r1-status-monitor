@@ -32,3 +32,8 @@ __pycache__/
 .env.*
 
 /ros_ws/src/rpp_msgs/
+/ros_ws/src/rm_ros_interfaces/
+
+# 忽略根目录下的检验文件夹及其全部内容
+/检验文件夹/
+

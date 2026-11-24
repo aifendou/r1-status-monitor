@@ -14,6 +14,9 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <cstddef>
+#include <cstdint>
+#include <limits>
 
 namespace r1_monitor
 {
@@ -442,8 +445,305 @@ inline FormatResult formatFaults(const StatusJson& root)
         severity
     };
 }
+// ============================================================
+// 机械臂摘要。
+// 与电池、设备摘要一样：检查接收状态、新鲜度，再显示内容。
+// ============================================================
 
+// 格式化一路机械臂反馈。
+// is_joint=true表示关节错误码，否则表示系统错误码。
+inline FormatResult formatArmFeedback(
+    const StatusJson& feedback,
+    bool is_joint,
+    int dof = 0)
+{
+    if (!formatterReadBool(feedback, "received"))
+    {
+        return {"尚未收到", Severity::Warning};
+    }
 
+    if (!formatterReadBool(feedback, "fresh"))
+    {
+        return {"数据过期", Severity::Warning};
+    }
+
+    const auto& codes = feedback.at("codes");
+
+    if (!codes.is_array() || codes.size() > 24)
+    {
+        throw std::invalid_argument("Invalid arm code array");
+    }
+
+    if (is_joint
+        && codes.size() != static_cast<std::size_t>(dof))
+    {
+        throw std::invalid_argument("Joint count mismatch");
+    }
+
+    const double minimum =
+        is_joint
+            ? 0.0
+            : static_cast<double>(
+                std::numeric_limits<std::int32_t>::min());
+
+    const double maximum =
+        is_joint
+            ? 65535.0
+            : static_cast<double>(
+                std::numeric_limits<std::int32_t>::max());
+
+    bool active = false;
+
+    for (const auto& value : codes)
+    {
+        if (!value.is_number_integer())
+        {
+            throw std::invalid_argument("Expected integer code");
+        }
+
+        const double number = value.get<double>();
+
+        if (number < minimum || number > maximum)
+        {
+            throw std::invalid_argument("Arm code out of range");
+        }
+
+        if (number != 0)
+        {
+            active = true;
+        }
+    }
+
+    if (active)
+    {
+        // 只显示原始码，不猜测错误原因。
+        return {
+            "报警码=" + codes.dump(),
+            Severity::Error
+        };
+    }
+
+    return {"未见报警", Severity::Info};
+}
+
+// 左右机械臂共用的摘要处理。
+inline FormatResult formatOneArm(
+    const StatusJson& root,
+    const char* side,
+    const char* label)
+{
+    const auto& arm = root.at("arms").at(side);
+    const auto& joint = arm.at("joint");
+    const auto& system = arm.at("system");
+
+    int dof = 0;
+
+    if (formatterReadBool(joint, "received"))
+    {
+        // 当前实机是六自由度；这里允许接口表示六或七自由度。
+        dof = formatterReadInt(arm, "dof", 6, 7);
+    }
+
+    const auto joint_result =
+        formatArmFeedback(joint, true, dof);
+
+    const auto system_result =
+        formatArmFeedback(system, false);
+
+    FormatResult result;
+
+    result.text_ =
+        std::string(label)
+        + " joint=" + joint_result.text_
+        + " system=" + system_result.text_;
+
+    result.severity_ = formatterHigherSeverity(
+        joint_result.severity_,
+        system_result.severity_);
+
+    return result;
+}
+
+inline FormatResult formatLeftArm(const StatusJson& root)
+{
+    return formatOneArm(root, "left", "left_arm");
+}
+
+inline FormatResult formatRightArm(const StatusJson& root)
+{
+    return formatOneArm(root, "right", "right_arm");
+}
+// 格式化一侧夹爪状态。
+inline FormatResult formatOneGripper(
+    const StatusJson& root,
+    const char* side,
+    const char* label)
+{
+    const auto& gripper = root.at("grippers").at(side);
+
+    if (!formatterReadBool(gripper, "received"))
+    {
+        return {
+            std::string(label) + "=尚未收到",
+            Severity::Warning
+        };
+    }
+
+    if (!formatterReadBool(gripper, "fresh"))
+    {
+        return {
+            std::string(label) + "=反馈超时",
+            Severity::Warning
+        };
+    }
+
+    const double position =
+        formatterReadNumber(gripper, "position_rad");
+
+    const std::string joint_name =
+        gripper.at("joint_name").get<std::string>();
+
+    if (joint_name.empty())
+    {
+        throw std::invalid_argument(
+            "Empty gripper joint name");
+    }
+
+    std::ostringstream text;
+    text.imbue(std::locale::classic());
+
+    text << std::fixed << std::setprecision(3)
+         << label
+         << " pos=" << position
+         << " rad";
+
+    return {
+        text.str(),
+        Severity::Info
+    };
+}
+
+inline FormatResult formatLeftGripper(const StatusJson& root)
+{
+    return formatOneGripper(
+        root,
+        "left",
+        "left_gripper");
+}
+
+inline FormatResult formatRightGripper(const StatusJson& root)
+{
+    return formatOneGripper(
+        root,
+        "right",
+        "right_gripper");
+}
+// 格式化一路相机。
+inline FormatResult formatOneCamera(
+    const StatusJson& camera,
+    const std::string& name)
+{
+    if (!formatterReadBool(camera, "received"))
+    {
+        return {
+            name + "=尚未收到有效帧",
+            Severity::Warning
+        };
+    }
+
+    if (!formatterReadBool(camera, "fresh"))
+    {
+        return {
+            name + "=新帧超时",
+            Severity::Warning
+        };
+    }
+
+    const int width = formatterReadInt(
+        camera,
+        "width",
+        1,
+        std::numeric_limits<int>::max());
+
+    const int height = formatterReadInt(
+        camera,
+        "height",
+        1,
+        std::numeric_limits<int>::max());
+
+    std::ostringstream text;
+    text.imbue(std::locale::classic());
+
+    text << name << "=" << width << "x" << height;
+
+    if (camera.at("rx_fps").is_null())
+    {
+        text << " fps统计中";
+    }
+    else
+    {
+        const double fps =
+            formatterReadNumber(camera, "rx_fps");
+
+        if (fps < 0.0)
+        {
+            throw std::invalid_argument("Negative camera FPS");
+        }
+
+        text << " rx="
+             << std::fixed << std::setprecision(1)
+             << fps << "fps";
+    }
+
+    return {
+        text.str(),
+        Severity::Info
+    };
+}
+
+// 遍历全部相机，不为F/B/H/L/R重复写摘要函数。
+inline FormatResult formatCameras(const StatusJson& root)
+{
+    const auto& cameras = root.at("cameras");
+
+    if (!cameras.is_object())
+    {
+        throw std::invalid_argument(
+            "Expected camera object");
+    }
+
+    if (cameras.empty())
+    {
+        return {
+            "cameras=未注册监测项",
+            Severity::Warning
+        };
+    }
+
+    FormatResult total;
+
+    for (auto it = cameras.begin(); it != cameras.end(); ++it)
+    {
+        FormatResult part;
+
+        try
+        {
+            part = formatOneCamera(it.value(), it.key());
+        }
+        catch (const std::exception&)
+        {
+            // 一路字段异常，不影响其他相机继续显示。
+            part = {
+                it.key() + "=响应字段无效",
+                Severity::Warning
+            };
+        }
+
+        formatterAppend(total, part);
+    }
+
+    return total;
+}
 // ============================================================
 // 六、客户端只调用这个总入口。
 // ============================================================
@@ -488,6 +788,26 @@ inline FormatResult formatStateResponse(
             total,
             formatterProtect(root, "device", formatDevice));
 
+        formatterAppend(
+            total,
+            formatterProtect(root, "left_arm", formatLeftArm));
+
+        formatterAppend(
+            total,
+            formatterProtect(root, "right_arm", formatRightArm));
+        
+        formatterAppend(
+            total,
+            formatterProtect(root,"left_gripper",formatLeftGripper));
+
+        formatterAppend(
+            total,
+            formatterProtect(root,"right_gripper",formatRightGripper));
+            
+        formatterAppend(
+            total,
+            formatterProtect(root, "cameras", formatCameras));
+        
         formatterAppend(
             total,
             formatterProtect(root, "faults", formatFaults));

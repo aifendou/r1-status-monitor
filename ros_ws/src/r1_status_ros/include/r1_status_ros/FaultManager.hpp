@@ -156,7 +156,22 @@ public:
             }
         }
     }
+    // 只将一个监测项设为未知。
+    // 例如：左臂关节反馈超时，不影响左臂系统错误码的判断。
+    //
+    // Unknown不代表故障解除，不生成解除事件。
+    // 最后一次确认的故障信息仍然保留。
+    void markFaultUnknown(
+        const std::string& module,
+        const std::string& code)
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
 
+        // 调用前必须已经注册该监测项。
+        Entry& entry = entries_.at(Key{module, code});
+
+        entry.current_.state_ = FaultState::Unknown;
+    }
     Snapshot snapshot() const
     {
         std::lock_guard<std::mutex> lock(mutex_);

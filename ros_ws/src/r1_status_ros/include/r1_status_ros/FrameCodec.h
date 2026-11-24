@@ -15,7 +15,7 @@ using namespace muduo::net;
 namespace r1_protocol
 {
 // 当前协议限制单条正文最多4096字节
-constexpr int32_t kMaxBodyLength =4096;
+constexpr int32_t kMaxBodyLength =16 * 1024;
 // 一次解码可能得到三种结果。
 enum class ReadResult
 {
