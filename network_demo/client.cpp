@@ -2,7 +2,7 @@
  * 项目：R1机器人状态采集与TCP远程监测
  *  
  * 功能：TCP 连接、定时查询、重连、接收响应
- * 1. 连接0.0.0.0:9090。
+ * 1. 连接192.168.11.11:9090。
  * 2. 每两秒发送一次GET_STATE。
  * 3. 解析并显示完整状态响应。
  * 4. 断开后自动重连。
@@ -98,7 +98,8 @@ private:
 
             if (result == r1_protocol::ReadResult::Invalid)
             {
-                logger_.write(
+                logger_.writeRuntime(
+                    r1_monitor::Severity::Error,
                     "PROTOCOL_ERROR",
                     "响应长度非法，关闭当前连接");
 
@@ -106,7 +107,7 @@ private:
                 return;
             }
 
-            // 保存完整JSON文本，目前不额外解析其中字段。
+            // 解析并保存摘要。
             handleStateResponse(response);
         }
     }
@@ -125,8 +126,9 @@ private:
                 + "，command=" + request);
         }
         else{
-            logger_.write(
-                "ERROR",
+            logger_.writeRuntime(
+                r1_monitor::Severity::Error,
+                "SEND_ERROR",
                 "查询消息未通过发送长度检查");
         }
     }

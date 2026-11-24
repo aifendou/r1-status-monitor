@@ -33,7 +33,7 @@ int main(int argc, char* argv[]){
     auto store =std::make_shared<r1_monitor::StateStore>();
     // 只创建一份故障管理对象，由ROS节点和TCP服务端共享。
     auto fault_manager =std::make_shared<r1_monitor::FaultManager>(logger);
-    auto node =std::make_shared<r1_monitor::RobotMonitor>(store,"/demo/odom",timeout_sec);
+    auto node =std::make_shared<r1_monitor::RobotMonitor>(store,"/demo/odom",timeout_sec,fault_manager);
     // Muduo主EventLoop必须在运行它的主线程中创建。
     muduo::net::EventLoop loop;
     muduo::net::InetAddress address("0.0.0.0", 9090);
@@ -41,7 +41,8 @@ int main(int argc, char* argv[]){
         &loop,
         address,
         store,//共享缓存
-        timeout_sec);//超时事件
+        timeout_sec,
+        fault_manager);//超时事件
     /*
      * Ctrl+C由ROS 2的信号处理机制请求关闭ROS。
      * 主EventLoop定期观察ROS状态，然后结束自身循环。

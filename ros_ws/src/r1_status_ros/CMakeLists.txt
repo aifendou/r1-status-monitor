@@ -63,10 +63,7 @@ target_include_directories(r1_status_server PRIVATE
 target_include_directories(r1_status_server SYSTEM PRIVATE
   "${MUDUO_INCLUDE_DIR}"
 )
-ament_target_dependencies(r1_status_server
-  rclcpp
-  nav_msgs
-)
+
 target_link_libraries(r1_status_server
   "${MUDUO_NET_LIBRARY}"
   "${MUDUO_BASE_LIBRARY}"

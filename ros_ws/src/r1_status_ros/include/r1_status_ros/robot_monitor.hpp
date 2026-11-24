@@ -15,6 +15,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <vector>
 
 using namespace std;
 using namespace placeholders;
@@ -26,7 +27,7 @@ public:
         ,const string& topic
         ,double timeout_sec
         ,shared_ptr<FaultManager> fault_manager = nullptr)
-        :rclcpp::Node("r1_odom_monitor"),
+        :rclcpp::Node("r1_robot_monitor"),
          store_(store),
          fault_manager_(fault_manager),
          timeout_sec_(timeout_sec)
@@ -110,12 +111,13 @@ private:
                 "Rejected device state: invalid value or timestamp.");
         }
     }
-    // 把一个厂家原始字段转换成统一的故障观察结果。
-    void reportChassisFault(
+    // 只组装观察结果，不立即提交。
+    // 因此一次厂家消息中的四项数据可以先组合起来。
+    FaultObservation makeChassisFault(
         const char* code,
         int raw_value,
         std::int64_t source_ts,
-        Severity severity)
+        Severity severity) const
     {
         FaultObservation observation;
 
@@ -133,16 +135,15 @@ private:
             "raw=" + std::to_string(raw_value)
             + " source_ts=" + std::to_string(source_ts);
 
-        // 只比较原始报警值，不包含不断变化的时间戳。
+        // 时间戳变化不代表故障内容变化。
         observation.fingerprint_ =
             std::to_string(raw_value);
 
-        fault_manager_->observe(observation);
+        return observation;
     }
 
 
-    void onError(
-        rpp_msgs::msg::ErrorState::ConstSharedPtr msg)
+    void onError(rpp_msgs::msg::ErrorState::ConstSharedPtr msg)
     {
         if (!fault_manager_)
         {
@@ -165,39 +166,53 @@ private:
         if (fault_received_
             && msg->ts == last_fault_source_ts_)
         {
-            // 厂家重复发布同一份底层缓存，不刷新新鲜度。
+            // 厂家重复发布同一份底层缓存，
+            // 不刷新数据年龄，也不重复提交。
             return;
         }
 
+        // 记录本次回调观察到新反馈的时刻。
+        const auto receive_time = SteadyClock::now();
+
+        std::vector<FaultObservation> observations;
+        observations.reserve(4);
+
+        observations.push_back(
+            makeChassisFault(
+                "motor_alarm",
+                static_cast<int>(msg->motor_error),
+                msg->ts,
+                Severity::Error));
+
+        observations.push_back(
+            makeChassisFault(
+                "turn_motor_alarm",
+                static_cast<int>(msg->turn_motor_error),
+                msg->ts,
+                Severity::Error));
+
+        observations.push_back(
+            makeChassisFault(
+                "bump_alarm",
+                static_cast<int>(msg->bump_error),
+                msg->ts,
+                Severity::Warning));
+
+        observations.push_back(
+            makeChassisFault(
+                "communication_alarm",
+                static_cast<int>(msg->communication_error),
+                msg->ts,
+                Severity::Error));
+
+        // 四项反馈在同一个批次中更新。
+        fault_manager_->observeBatch(observations);
+
+        // 成功处理后更新本地接收记录。
         fault_received_ = true;
         last_fault_source_ts_ = msg->ts;
-        last_fault_update_time_ = SteadyClock::now();
-
-        reportChassisFault(
-            "motor_alarm",
-            static_cast<int>(msg->motor_error),
-            msg->ts,
-            Severity::Error);
-
-        reportChassisFault(
-            "turn_motor_alarm",
-            static_cast<int>(msg->turn_motor_error),
-            msg->ts,
-            Severity::Error);
-
-        reportChassisFault(
-            "bump_alarm",
-            static_cast<int>(msg->bump_error),
-            msg->ts,
-            Severity::Warning);
-
-        reportChassisFault(
-            "communication_alarm",
-            static_cast<int>(msg->communication_error),
-            msg->ts,
-            Severity::Error);
+        last_fault_update_time_ = receive_time;
     }
-
 
     void checkFaultTimeout()
     {

@@ -74,112 +74,66 @@ public:
         entries_.emplace(key, entry);
     }
 
-    // 更新接口当前由单一ROS执行线程调用。
-    // TCP线程可以同时调用snapshot()读取。
+    // 单项观察继续保留，方便以后接入只有一项反馈的模块。
+    // 内部统一走批量处理，避免维护两套状态转换逻辑。
     void observe(const FaultObservation& observation)
     {
-        FaultEvent event;
-        bool record_event = false;
+        observeBatch(
+            std::vector<FaultObservation>{observation});
+    }
 
+
+    // 同一条反馈消息中的多个观察结果，一次提交。
+    // 当前仍由单一ROS执行线程调用更新接口。
+    void observeBatch(
+        const std::vector<FaultObservation>& observations)
+    {
+        if (observations.empty())
         {
-            std::lock_guard<std::mutex> lock(mutex_);
-
-            const Key key{
-                observation.module_,
-                observation.code_
-            };
-
-            auto it = entries_.find(key);
-
-            if (it == entries_.end())
-            {
-                throw std::invalid_argument(
-                    "提交了尚未注册的故障项目");
-            }
-
-            Entry& entry = it->second;
-
-            // Unknown不等于故障解除。
-            if (observation.state_ == FaultState::Unknown)
-            {
-                entry.current_.state_ = FaultState::Unknown;
-                return;
-            }
-
-            FaultObservation current = observation;
-
-            // 已触发故障至少显示Warning，避免误显示为普通信息。
-            if (current.state_ == FaultState::Active
-                && current.severity_ == Severity::Info)
-            {
-                current.severity_ = Severity::Warning;
-            }
-
-            if (current.state_ == FaultState::Active)
-            {
-                if (entry.last_confirmed_ == FaultState::Unknown)
-                {
-                    event.kind_ = FaultEventKind::InitialActive;
-                    record_event = true;
-                }
-                else if (
-                    entry.last_confirmed_ == FaultState::Healthy)
-                {
-                    event.kind_ = FaultEventKind::Raised;
-                    record_event = true;
-                }
-                else if (
-                    current.fingerprint_ != entry.last_fingerprint_
-                    || current.severity_ != entry.last_severity_)
-                {
-                    event.kind_ = FaultEventKind::Changed;
-                    record_event = true;
-                }
-            }
-            else if (
-                entry.last_confirmed_ == FaultState::Active)
-            {
-                event.kind_ = FaultEventKind::Cleared;
-                record_event = true;
-            }
-
-            if (record_event)
-            {
-                event.sequence_ = ++sequence_;
-                event.module_ = current.module_;
-                event.code_ = current.code_;
-
-                event.severity_ =
-                    event.kind_ == FaultEventKind::Cleared
-                        ? Severity::Info
-                        : current.severity_;
-
-                if (event.kind_ == FaultEventKind::Changed
-                    || event.kind_ == FaultEventKind::Cleared)
-                {
-                    event.detail_ =
-                        entry.last_detail_
-                        + " -> "
-                        + current.detail_;
-                }
-                else
-                {
-                    event.detail_ = current.detail_;
-                }
-
-                // observed_at_留空，由日志工具在写入时填本地时间。
-            }
-
-            entry.current_ = current;
-            entry.last_confirmed_ = current.state_;
-            entry.last_fingerprint_ = current.fingerprint_;
-            entry.last_severity_ = current.severity_;
-            entry.last_detail_ = current.detail_;
+            return;
         }
 
-        // 已释放故障状态锁，再进行文件操作。
-        // 文件写入不会阻塞TCP线程读取状态锁。
-        if (record_event)
+        // 先收集本次产生的事件，稍后再写文件。
+        std::vector<FaultEvent> events;
+        events.reserve(observations.size());
+
+        {
+            // 这把锁覆盖本批次的全部状态更新。
+            std::lock_guard<std::mutex> lock(mutex_);
+
+            // 先检查整批项目，避免更新到一半才发现名称写错。
+            std::set<Key> seen;
+
+            for (const auto& observation : observations)
+            {
+                const Key key{
+                    observation.module_,
+                    observation.code_
+                };
+
+                if (entries_.find(key) == entries_.end())
+                {
+                    throw std::invalid_argument(
+                        "批量提交中包含尚未注册的故障项目");
+                }
+
+                if (!seen.insert(key).second)
+                {
+                    throw std::invalid_argument(
+                        "同一批次重复提交了同一个故障项目");
+                }
+            }
+
+            // 验证通过后，在同一把锁保护下更新所有项目。
+            for (const auto& observation : observations)
+            {
+                applyObservationLocked(observation, events);
+            }
+        }
+
+        // 状态锁已释放。
+        // 文件写入不会占用TCP读取快照需要的状态锁。
+        for (const auto& event : events)
         {
             logger_.writeFault(event);
         }
@@ -248,7 +202,106 @@ private:
         Severity last_severity_ = Severity::Warning;
         std::string last_detail_;
     };
+    /*
+    * 处理一个观察结果。
+    *
+    * 调用者必须已经持有mutex_。
+    * 本函数不再加锁，也不写文件，只更新状态、收集事件。
+    */
+    void applyObservationLocked(
+        const FaultObservation& observation,
+        std::vector<FaultEvent>& events)
+    {
+        const Key key{
+            observation.module_,
+            observation.code_
+        };
 
+        // observeBatch已经验证过该项目存在。
+        Entry& entry = entries_.at(key);
+
+        if (observation.state_ == FaultState::Unknown)
+        {
+            // 未知不代表解除。
+            // 保留最后一次有依据的判断。
+            entry.current_.state_ = FaultState::Unknown;
+            return;
+        }
+
+        FaultObservation current = observation;
+
+        if (current.state_ == FaultState::Active
+            && current.severity_ == Severity::Info)
+        {
+            current.severity_ = Severity::Warning;
+        }
+
+        FaultEvent event;
+        bool record_event = false;
+
+        if (current.state_ == FaultState::Active)
+        {
+            if (entry.last_confirmed_ == FaultState::Unknown)
+            {
+                event.kind_ = FaultEventKind::InitialActive;
+                record_event = true;
+            }
+            else if (
+                entry.last_confirmed_ == FaultState::Healthy)
+            {
+                event.kind_ = FaultEventKind::Raised;
+                record_event = true;
+            }
+            else if (
+                current.fingerprint_ != entry.last_fingerprint_
+                || current.severity_ != entry.last_severity_)
+            {
+                event.kind_ = FaultEventKind::Changed;
+                record_event = true;
+            }
+        }
+        else if (
+            current.state_ == FaultState::Healthy
+            && entry.last_confirmed_ == FaultState::Active)
+        {
+            event.kind_ = FaultEventKind::Cleared;
+            record_event = true;
+        }
+
+        if (record_event)
+        {
+            event.sequence_ = ++sequence_;
+            event.module_ = current.module_;
+            event.code_ = current.code_;
+
+            event.severity_ =
+                event.kind_ == FaultEventKind::Cleared
+                    ? Severity::Info
+                    : current.severity_;
+
+            if (event.kind_ == FaultEventKind::Changed
+                || event.kind_ == FaultEventKind::Cleared)
+            {
+                event.detail_ =
+                    entry.last_detail_
+                    + " -> "
+                    + current.detail_;
+            }
+            else
+            {
+                event.detail_ = current.detail_;
+            }
+
+            // observed_at_留空，由日志工具填写记录时间。
+            events.push_back(std::move(event));
+        }
+
+        entry.current_ = current;
+        entry.last_confirmed_ = current.state_;
+        entry.last_fingerprint_ = current.fingerprint_;
+        entry.last_severity_ = current.severity_;
+        entry.last_detail_ = current.detail_;
+    }
     FileLogger& logger_;
 
     mutable std::mutex mutex_;
