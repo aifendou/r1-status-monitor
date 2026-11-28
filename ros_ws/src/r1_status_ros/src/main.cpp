@@ -33,7 +33,7 @@ int main(int argc, char* argv[]){
     auto store =std::make_shared<r1_monitor::StateStore>();
     // 只创建一份故障管理对象，由ROS节点和TCP服务端共享。
     auto fault_manager =std::make_shared<r1_monitor::FaultManager>(logger);
-    auto node =std::make_shared<r1_monitor::RobotMonitor>(store,"/demo/odom",timeout_sec,fault_manager);
+    auto node =std::make_shared<r1_monitor::RobotMonitor>(store,"/odom",timeout_sec,fault_manager);
     // Muduo主EventLoop必须在运行它的主线程中创建。
     muduo::net::EventLoop loop;
     muduo::net::InetAddress address("0.0.0.0", 9090);
@@ -77,7 +77,7 @@ int main(int argc, char* argv[]){
     });
     std::cout
         << "[R1服务端] 监听0.0.0.0:9090"
-        << "，订阅/demo/odom"
+        << "，订阅/odom"
         << std::endl;
     // 主线程运行Muduo
     loop.loop();

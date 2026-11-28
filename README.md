@@ -168,3 +168,239 @@ ros2 topic info /joint_states -v
 ros2 param get /left/crt_gripper_driver gripper_joint
 ros2 param get /right/crt_gripper_driver gripper_joint
 ros2 topic info /joint_states -v
+
+
+source /opt/ros/humble/setup.bash
+source /home/rpp/rpp_ws/install/setup.bash
+
+mkdir -p "$HOME/r1_projects/检验文件夹/demo_20261126_01"
+
+cd "$HOME/r1_projects/检验文件夹/demo_20261126_01"
+
+
+
+PYTHONUNBUFFERED=1 ros2 topic echo /rosout rcl_interfaces/msg/Log \
+  --qos-reliability reliable \
+  --qos-durability volatile \
+  --qos-depth 1000 \
+  --full-length \
+  > rosout_full.txt \
+  2> rosout_capture_errors.txt
+
+
+  source /opt/ros/humble/setup.bash
+source /home/rpp/rpp_ws/install/setup.bash
+
+cd "$HOME/r1_projects/检验文件夹/demo_20261126_01"
+
+
+ros2 node list -a > nodes_before.txt
+
+ros2 topic list -t --include-hidden-topics > topics_before.txt
+
+ros2 service list -t > services_before.txt
+
+ros2 action list -t > actions_before.txt
+
+ros2 node info /bt_demo > bt_demo_info.txt 2>&1
+
+ros2 param dump /bt_demo > bt_demo_parameters.yaml 2>&1
+
+date -Is > before_task_start_time.txt
+
+ros2 node list -a > nodes_running.txt
+
+ros2 topic list -t --include-hidden-topics > topics_running.txt
+
+ros2 service list -t > services_running.txt
+
+ros2 action list -t > actions_running.
+
+
+
+date -Is > task_end_observed_time.txt
+
+ros2 node list -a > nodes_after.txt
+
+ros2 topic list -t --include-hidden-topics > topics_after.txt
+
+ros2 service list -t > services_after.txt
+
+ros2 action list -t > actions_after.txt
+
+grep -n -E \
+  'Behavior tree started|BT stopped|Conveyor|conveyor|Photoelectric|PLC|PickPallet' \
+  rosout_full.txt
+
+
+
+rpp<robot>:~/Desktop$ ros2 topic info /joint_states -v
+Type: sensor_msgs/msg/JointState
+
+Publisher count: 5
+
+Node name: joint_state_publisher
+Node namespace: /
+Topic type: sensor_msgs/msg/JointState
+Endpoint type: PUBLISHER
+GID: 01.0f.6f.3b.28.25.e9.54.00.00.00.00.00.00.13.03.00.00.00.00.00.00.00.00
+QoS profile:
+  Reliability: RELIABLE
+  History (Depth): UNKNOWN
+  Durability: VOLATILE
+  Lifespan: Infinite
+  Deadline: Infinite
+  Liveliness: AUTOMATIC
+  Liveliness lease duration: Infinite
+
+Node name: motor_lift_ros_node
+Node namespace: /
+Topic type: sensor_msgs/msg/JointState
+Endpoint type: PUBLISHER
+GID: 01.0f.6f.3b.30.25.07.a9.00.00.00.00.00.00.1a.03.00.00.00.00.00.00.00.00
+QoS profile:
+  Reliability: RELIABLE
+  History (Depth): UNKNOWN
+  Durability: VOLATILE
+  Lifespan: Infinite
+  Deadline: Infinite
+  Liveliness: AUTOMATIC
+  Liveliness lease duration: Infinite
+
+Node name: motor_pitch_ros_node
+Node namespace: /
+Topic type: sensor_msgs/msg/JointState
+Endpoint type: PUBLISHER
+GID: 01.0f.6f.3b.32.25.41.2f.00.00.00.00.00.00.1a.03.00.00.00.00.00.00.00.00
+QoS profile:
+  Reliability: RELIABLE
+  History (Depth): UNKNOWN
+  Durability: VOLATILE
+  Lifespan: Infinite
+  Deadline: Infinite
+  Liveliness: AUTOMATIC
+  Liveliness lease duration: Infinite
+
+Node name: _NODE_NAME_UNKNOWN_
+Node namespace: _NODE_NAMESPACE_UNKNOWN_
+Topic type: sensor_msgs/msg/JointState
+Endpoint type: PUBLISHER
+GID: 01.0f.ab.f1.f4.7e.d5.fe.00.00.00.00.00.00.bb.03.00.00.00.00.00.00.00.00
+QoS profile:
+  Reliability: RELIABLE
+  History (Depth): UNKNOWN
+  Durability: VOLATILE
+  Lifespan: Infinite
+  Deadline: Infinite
+  Liveliness: AUTOMATIC
+  Liveliness lease duration: Infinite
+
+Node name: _NODE_NAME_UNKNOWN_
+Node namespace: _NODE_NAMESPACE_UNKNOWN_
+Topic type: sensor_msgs/msg/JointState
+Endpoint type: PUBLISHER
+GID: 01.0f.ab.f1.f8.7e.2e.7c.00.00.00.00.00.00.bb.03.00.00.00.00.00.00.00.00
+QoS profile:
+  Reliability: RELIABLE
+  History (Depth): UNKNOWN
+  Durability: VOLATILE
+  Lifespan: Infinite
+  Deadline: Infinite
+  Liveliness: AUTOMATIC
+  Liveliness lease duration: Infinite
+
+Subscription count: 3
+
+Node name: robot_state_publisher
+Node namespace: /
+Topic type: sensor_msgs/msg/JointState
+Endpoint type: SUBSCRIPTION
+GID: 01.0f.6f.3b.26.25.6d.03.00.00.00.00.00.00.15.04.00.00.00.00.00.00.00.00
+QoS profile:
+  Reliability: BEST_EFFORT
+  History (Depth): UNKNOWN
+  Durability: VOLATILE
+  Lifespan: Infinite
+  Deadline: Infinite
+  Liveliness: AUTOMATIC
+  Liveliness lease duration: Infinite
+
+Node name: joint_state_publisher
+Node namespace: /
+Topic type: sensor_msgs/msg/JointState
+Endpoint type: SUBSCRIPTION
+GID: 01.0f.6f.3b.28.25.e9.54.00.00.00.00.00.00.12.04.00.00.00.00.00.00.00.00
+QoS profile:
+  Reliability: RELIABLE
+  History (Depth): UNKNOWN
+  Durability: VOLATILE
+  Lifespan: Infinite
+  Deadline: Infinite
+  Liveliness: AUTOMATIC
+  Liveliness lease duration: Infinite
+
+Node name: move_group_private_105768178178576
+Node namespace: /
+Topic type: sensor_msgs/msg/JointState
+Endpoint type: SUBSCRIPTION
+GID: 01.0f.6f.3b.6f.26.ad.69.00.00.00.00.00.00.27.04.00.00.00.00.00.00.00.00
+QoS profile:
+  Reliability: BEST_EFFORT
+  History (Depth): UNKNOWN
+  Durability: VOLATILE
+  Lifespan: Infinite
+  Deadline: Infinite
+  Liveliness: AUTOMATIC
+  Liveliness lease duration: Infinite
+timeout 10s ros2 topic echo /joint_states 
+
+ros2 node info /left/crt_gripper_driver
+ros2 node info /right/crt_gripper_driver
+rpp<robot>:~/Desktop$ ros2 node info /left/crt_gripper_driver
+ros2 node info /right/crt_gripper_driver
+/left/crt_gripper_driver
+  Subscribers:
+    /left/set_gripper_pos: std_msgs/msg/Float32
+    /parameter_events: rcl_interfaces/msg/ParameterEvent
+  Publishers:
+    /joint_states: sensor_msgs/msg/JointState
+    /parameter_events: rcl_interfaces/msg/ParameterEvent
+    /rosout: rcl_interfaces/msg/Log
+  Service Servers:
+    /left/crt_gripper_driver/describe_parameters: rcl_interfaces/srv/DescribeParameters
+    /left/crt_gripper_driver/get_parameter_types: rcl_interfaces/srv/GetParameterTypes
+    /left/crt_gripper_driver/get_parameters: rcl_interfaces/srv/GetParameters
+    /left/crt_gripper_driver/list_parameters: rcl_interfaces/srv/ListParameters
+    /left/crt_gripper_driver/set_parameters: rcl_interfaces/srv/SetParameters
+    /left/crt_gripper_driver/set_parameters_atomically: rcl_interfaces/srv/SetParametersAtomically
+    /left/set_gripper_pos_srv: crt_gripper_driver/srv/CRTGripperset
+  Service Clients:
+
+  Action Servers:
+    /left/gripper_controller/gripper_cmd: control_msgs/action/GripperCommand
+  Action Clients:
+
+/right/crt_gripper_driver
+  Subscribers:
+    /parameter_events: rcl_interfaces/msg/ParameterEvent
+    /right/set_gripper_pos: std_msgs/msg/Float32
+  Publishers:
+    /joint_states: sensor_msgs/msg/JointState
+    /parameter_events: rcl_interfaces/msg/ParameterEvent
+    /rosout: rcl_interfaces/msg/Log
+  Service Servers:
+    /right/crt_gripper_driver/describe_parameters: rcl_interfaces/srv/DescribeParameters
+    /right/crt_gripper_driver/get_parameter_types: rcl_interfaces/srv/GetParameterTypes
+    /right/crt_gripper_driver/get_parameters: rcl_interfaces/srv/GetParameters
+    /right/crt_gripper_driver/list_parameters: rcl_interfaces/srv/ListParameters
+    /right/crt_gripper_driver/set_parameters: rcl_interfaces/srv/SetParameters
+    /right/crt_gripper_driver/set_parameters_atomically: rcl_interfaces/srv/SetParametersAtomically
+    /right/set_gripper_pos_srv: crt_gripper_driver/srv/CRTGripperset
+  Service Clients:
+
+  Action Servers:
+    /right/gripper_controller/gripper_cmd: control_msgs/action/GripperCommand
+  Action Clients:
+
+rpp<robot>:~/Desktop$ 
+

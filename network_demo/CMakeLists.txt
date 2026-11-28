@@ -4,7 +4,7 @@ cmake_minimum_required(VERSION 3.16)
 # 项目名称，使用C++
 project(r1_monitor_demo LANGUAGES CXX)
 
-# 使用C++11标准
+# 使用C++17标准
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
